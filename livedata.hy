@@ -1,0 +1,205 @@
+"
+@author: tjdwill
+@date: 18 March 2022
+@title: Live Data
+@description:
+    A data container in which the data is 'alive', meaning the contained data
+    has an active role in container queries.
+"
+
+(import 
+    collections [namedtuple]
+    threading
+    time
+    random)
+
+#[TODO[
+    - Investigate Race condition: Why do I get the incorrect answer at times?
+    - Why are the higher number of threads more accurate?
+    - Why does a larger number of threads result in super slow performance?
+    - What are the weak points of the program implementation?
+]TODO]
+
+(defclass NoticeBoard []
+    "A class that allows data to be Noneed down to threads in one direction."
+    (defn __init__ [self author_key canvas]
+        (setv self._canvas-type (type (canvas))) ; Type of container the data lives in
+        (setv #^ [namedtuple tuple] self._board (canvas)) ; The actual "board"
+        (setv self.author_key author_key)) ; Authentication Key
+    
+    (defn [property] content [self]
+        self._board)
+    "
+    Setter for the NoticeBoard. Data should be in format:
+    [authentication_id, new_data]
+    "
+    (defn [content.setter] content [self data]
+        (setv [key new_data] data)
+        (if (not (= (type new_data) self._canvas-type))
+            (raise (TypeError "Incorrect canvas type.\n"))
+            (if (not (= key self.author_key))
+                (raise (PermissionError "Authentication Error: No write access.\n"))
+                (setv self._board new_data)))))
+    
+
+(defclass ActiveData []
+    "A dataclass that is expected to be alive"
+    (defn __init__ [
+            self 
+            #^ int idx 
+            value
+            event_flags
+            notice_board
+            thread_dict
+        ]
+
+        (if (< idx 0)
+            (raise (ValueError "<ActiveData>: Unacceptable index.\n"))
+            (setv self.idx idx))
+        (setv self.value value)
+        (setv [self.fl_command self.fl_shutdown] event_flags) ; event flags
+        (setv self.notice_board notice_board) ; To view commands
+        (setv self.thread_dict thread_dict) ; To write output
+        ; Command mappings
+        (setv self.command_mappings
+            {0 self.check-idx 1 self.get-idx 2 self.check-val})
+        )
+    
+    (defn check-idx [self query]
+        "Returns the value if this data has the correct index."
+        (if (query self.idx)
+            self.value
+            None))
+
+    (defn get-idx [self query]
+        "Returns the index if the data's value fits the query.'"
+        (if (query self.value)
+            self.idx
+            None))
+
+    (defn check-val [self query]
+        "Returns the value if this data fits the query."
+        (if (query self.value)
+            self.value
+            None))
+            
+    (defn spin [self]
+        #[TODO[
+            Tj: "Right now, the function will keep writing to the dict for as
+            long as the command flag is set. I want to find a way to change
+            this to only write once if possible."
+        ]TODO]
+        (while (not (self.fl_shutdown.is_set))
+            (self.fl_command.wait)
+            ; A command has been issued
+            (setv [command query] self.notice_board.content)
+            ;(print f"Thread {(id self)}: Command {command}; Query {query}\n")
+            (setv answer ((get self.command_mappings command) query))
+            ;(print f"Thread {(id self)}: Query Answer is {answer}")
+            (setv (get self.thread_dict (id self)) answer))))
+            ;(print f"Thread {(id self)}: {self.thread_dict}")))
+
+
+(defclass ActiveArray []
+    "A container class to coordinate ActiveData instances."
+
+    (setv command_mappings {"val_from_idx" 0 "idx_from_val" 1 "vals_from_bool" 2})
+    (defn __init__ [self #^ [list tuple] data]
+        (setv self.canvas_type (namedtuple "CommandBoard" ["command" "query"] :defaults [None None]))
+        (setv self.notice_board (NoticeBoard (id self) self.canvas_type))
+        "Thread setup"
+        ; thread_dict {obj_id relevant_data}
+        (setv self.thread_dict {})
+        (setv self._thread_pool [])  ; (Debug) list of threads
+        (setv self.fl_command (threading.Event))
+        (setv self.fl_shutdown (threading.Event))
+        (setv self.flags [self.fl_command self.fl_shutdown])
+        (setv self._len (len data))
+        (for [[idx value] (enumerate data)]
+            (setv livedata (ActiveData #* [
+                idx
+                value
+                self.flags
+                self.notice_board
+                self.thread_dict
+            ]))
+            (setv thread (threading.Thread :target livedata.spin))
+            (thread.start)
+            (self._thread_pool.append thread)))
+    
+    (defn send-command [self command query]
+        "
+        Publish command and query to the notice board.
+        Command Mapping:
+            0: Get value from index
+            1: Get idx from value
+            2: Get values from boolean
+        "
+        (setv self.notice_board.content [(id self) (self.canvas_type :command command :query query)])
+        (self.fl_command.set))
+
+    (defn send-response [self]
+        ; Wait for writes to finish
+        (while (not (= (len self.thread_dict) self._len))
+            ;(print (len self.thread_dict) self.thread_dict))
+            None)
+        (self.fl_command.clear); Stop the responses
+        (setv response (list (filter (fn [x] (not (is x None))) (self.thread_dict.values))))
+        (self.thread_dict.clear)
+        response)
+    
+    (defn __len__ [self]
+        (return self._len))
+
+    (defn __getitem__ [self index]
+        (cond
+            (< index 0) (do
+                (if (<= 1 (abs index) (self._len))
+                (setv index (+ self._len index))
+                (raise (IndexError "Index out of range.\n"))))
+            
+            (>= index self._len) (raise (IndexError "Index out of range.\n")))
+        ; Send requisite signal
+        (self.send_command (get self.command_mappings "val_from_idx") (fn [x] (= x index)))
+        (self.send-response))
+        
+    (defn __del__ [self]
+        ;(print f"Destroying ActiveArray {(id self)}.\n")
+        ;(while (any (lfor x self._thread_pool (x.is_alive)))
+        (self.fl_command.set) ; release any threads currently blocking
+        (self.fl_shutdown.set)))
+
+(if (= __name__ "__main__")
+    ; Compilation Check
+(do
+    (setv ELEMENTS 5)
+    (setv TRIALS 100)
+    (print "Compilation Success!\n")
+    (try
+        (setv arr (ActiveArray (lfor x (range ELEMENTS) x)))
+        (print "Live Data created.\n")
+    (except [e[]]
+        (print e)))
+    (try
+        (setv [counter correct totaltime] [0 0 0])
+        (for [i (range TRIALS)]
+            (setv idx (random.randint 0 (- (len arr) 1)))
+            (setv starttime (time.time))
+            (setv answer (. arr [idx]))
+            (print f"Index Query Response {counter}\nTarget: {idx}, Answer: {answer}")
+            (setv new_time (- (time.time) starttime))
+            (print "Elapsed Time: " new_time)
+            (setv counter (+ counter 1))
+            (setv totaltime (+ totaltime new_time))
+            (if (and answer (= (. answer [0]) idx))
+                (setv correct (+ correct 1))
+                None))
+        (print f"\nNumber of Elements in Array: {(len arr)}")
+        (print f"Retrieval Accuracy: {(* (/ correct counter) 100) :.02f}%")
+        (print f"Average Access Time (s): {(/ totaltime TRIALS)}")
+    (except [e[BaseException]]
+        (print "Something happened.\n" e)
+        (arr.__del__))
+    (else
+        (del arr))))
+(exit))
