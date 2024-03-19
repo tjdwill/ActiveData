@@ -1,0 +1,39 @@
+Live Data Stats
+(Each test makes 100 random accesses to the array)
+
+Number of Elements in Array: 1
+Retrieval Accuracy: 100.00%
+Average Access Time (s): 0.00046866655349731446
+
+Number of Elements in Array: 2
+Retrieval Accuracy: 41.00% - 65.00%
+Average Access Time (s): 0.006485388278961181
+
+Number of Elements in Array: 3
+Retrieval Accuracy: 29 - 53.00%
+Average Access Time (s): 0.024060521125793457
+
+Number of Elements in Array: 5
+Outlier Accuracy: 31%  (Sometimes the program just quickly finishes with no accuracy, and I don't know why)
+Retrieval Accuracy: 96.00 - 100.00%
+Average Access Time (s): 0.21218851566314698
+
+Number of Elements in Array: 10
+Retrieval Accuracy: 100.00%
+Average Access Time (s): 0.4961779737472534
+
+Number of Elements in Array: 20
+Retrieval Accuracy: 100.00%
+Average Access Time (s): 1.1377225303649903
+
+Number of Elements in Array: 25
+Retrieval Accuracy: 100.00%
+Average Access Time (s): 1.4905041122436524
+
+Number of Elements in Array: 50
+Retrieval Accuracy: 100.00%
+Average Access Time (s): 3.5106988763809204
+
+Number of Elements in Array: 100
+Retrieval Accuracy: 100.00%
+Average Access Time (s): 7.76226658821106
