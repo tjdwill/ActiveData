@@ -5,7 +5,7 @@
 @description:
     A data container in which the data is 'alive', meaning the contained data
     has an active role in container queries.
-@version: 0.0.2
+@version: 0.0.3
 "
 
 (import 
@@ -16,9 +16,9 @@
 
 #[TODO[
     - Investigate Race condition: Why do I get the incorrect answer at times?
-    - Why are the higher number of threads more accurate?
     - Why does a larger number of threads result in super slow performance?
     - What are the weak points of the program implementation?
+    - How can I make it faster than the current list implementation? (It's currently over 10x slower.) 
 ]TODO]
 
 (defclass NoticeBoard []
@@ -93,11 +93,17 @@
         (while (not (self.fl_shutdown.is_set))
             (self.fl_command.wait)
             ; A command has been issued
+            (if (self.fl_shutdown.is_set)
+                (continue)
+                None)
             (setv [command query] self.notice_board.content)
             ;(print f"Thread {(id self)}: Command {command}; Query {query}\n")
             (setv answer ((get self.command_mappings command) query))
             ;(print f"Thread {(id self)}: Query Answer is {answer}")
+            ;(print (not (is answer None)))
             (setv (get self.thread_dict (id self)) answer)
+                ;(print f"Thread {(id self)} Curr Dict\n{self.thread_dict} with ID {( id self.thread_dict)}\n"))
+
             (self.fl_write.set)
             (self.fl_resume.wait)
             (self.fl_write.clear))))
@@ -114,11 +120,11 @@
         "Thread setup"
         ; thread_dict {obj_id relevant_data}
         (setv self.thread_dict {})
-        (setv self._thread_pool [])  ; (Debug) list of threads
+        (setv self._key_pool [])  ; (Debug) list of threads
         (setv self.fl_write_pool []) ; A Pool of write event flags
         (setv self.fl_command (threading.Event)) ; For sending commands
         (setv self.fl_shutdown (threading.Event)) ; Makes all threads exit
-        (setv self.fl_resume_wait (threading.Event)) ; Makes threads sit but not write.
+        (setv self.fl_thread_resume (threading.Event)) ; Makes threads sit but not write.
         (setv self.flags [self.fl_command self.fl_shutdown])
         (setv self._len (len data))
         ; Initialize data members
@@ -128,13 +134,15 @@
             (setv livedata (ActiveData #* [
                 idx
                 value
-                [#* self.flags fl_write self.fl_resume_wait]
+                [#* self.flags fl_write self.fl_thread_resume]
                 self.notice_board
                 self.thread_dict
             ]))
             (setv thread (threading.Thread :target livedata.spin))
             (thread.start)
-            (self._thread_pool.append thread)))
+            (self._key_pool.append (id livedata)))
+        ; Initialize writeable dict.
+        (self.thread_dict.update (dfor key self._key_pool key None)))
     
     (defn send-command [self command query]
         "
@@ -150,16 +158,12 @@
     (defn send-response [self]
         ; Wait for writes to finish
         (while (not (all (gfor flag self.fl_write_pool (flag.is_set))))
-            ;(print (len self.thread_dict) self.thread_dict))
             None)
-        ; Reset flags
         (self.fl_command.clear)
-        (self.fl_resume_wait.set) ; Trigger blocking threads
-        (self.fl_resume_wait.clear) ; Reset resume flag
-        ; Get the relevant values
+        (self.fl_thread_resume.set)
         (setv response (list (filter (fn [x] (not (is x None))) (self.thread_dict.values))))
-        (self.thread_dict.fromkeys self.thread_dict None) ; MUCH Faster, but that's because it's incorrect
-        ;(self.thread_dict.clear) ; Works, but is slow
+        (self.thread_dict.update (self.thread_dict.fromkeys self.thread_dict None))
+        (self.fl_thread_resume.clear)
         response)
     
     (defn __len__ [self]
@@ -179,34 +183,39 @@
         
     (defn __del__ [self]
         ;(print f"Destroying ActiveArray {(id self)}.\n")
-        ;(while (any (lfor x self._thread_pool (x.is_alive)))
+        ;(while (any (lfor x self._key_pool (x.is_alive)))
         (self.fl_shutdown.set)
         (self.fl_command.set) ; release any threads currently blocking
-        (self.fl_resume_wait.set)))
+        (self.fl_thread_resume.set)))
+
 
 (if (= __name__ "__main__")
     ; Compilation Check
 (do
-    (setv ELEMENTS 100)
+    (setv ELEMENTS 10)
     (setv TRIALS 100)
     (print "Compilation Success!\n")
     (try
-        (setv arr (ActiveArray (lfor x (range ELEMENTS) x)))
+        (setv lst (lfor x (range ELEMENTS) x))
+        (setv arr (ActiveArray lst))
         (print "Live Data created.\n")
     (except [e[]]
-        (print e)))
+        (print e))
+    )
+    ;#[CHECK[
+
     (try
         (setv [counter correct totaltime] [0 0 0])
         (for [i (range TRIALS)]
             (setv idx (random.randint 0 (- (len arr) 1)))
             (setv starttime (time.time))
-            (setv answer (. arr [idx]))
+            (setv answer (. lst [idx]))
             (print f"Index Query Response {counter}\nTarget: {idx}, Answer: {answer}")
             (setv new_time (- (time.time) starttime))
             (print "Elapsed Time: " new_time)
             (setv counter (+ counter 1))
             (setv totaltime (+ totaltime new_time))
-            (if (and answer (= (. answer [0]) idx))
+            (if (and True (= answer  idx))
                 (setv correct (+ correct 1))
                 None))
         (print f"\nNumber of Elements in Array: {(len arr)}")
@@ -217,4 +226,5 @@
         (arr.__del__))
     (else
         (del arr))))
+    ;]CHECK])
 (exit))
