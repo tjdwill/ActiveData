@@ -1,0 +1,25 @@
+v0.0.2 (19 March 2024 19:15)
+
+Number of Elements in Array: 1
+Retrieval Accuracy: 100.00%
+Average Access Time (s): 0.016564471721649168
+
+Number of Elements in Array: 2
+Retrieval Accuracy: 100.00%
+Average Access Time (s): 0.022056527137756347
+
+Number of Elements in Array: 100
+Retrieval Accuracy: 100.00%
+Average Access Time (s): 0.0744476842880249
+
+Number of Elements in Array: 200
+Retrieval Accuracy: 100.00%
+Average Access Time (s): 0.12044077157974244
+
+Number of Elements in Array: 250
+Retrieval Accuracy: 100.00%
+Average Access Time (s): 0.3764888644218445
+
+Number of Elements in Array: 500
+Retrieval Accuracy: 97.00%
+Average Access Time (s): 0.9780756402015686
