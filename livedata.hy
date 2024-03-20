@@ -5,6 +5,7 @@
 @description:
     A data container in which the data is 'alive', meaning the contained data
     has an active role in container queries.
+@version: 0.0.2
 "
 
 (import 
@@ -57,7 +58,7 @@
             (raise (ValueError "<ActiveData>: Unacceptable index.\n"))
             (setv self.idx idx))
         (setv self.value value)
-        (setv [self.fl_command self.fl_shutdown] event_flags) ; event flags
+        (setv [self.fl_command self.fl_shutdown self.fl_write self.fl_resume] event_flags) ; event flags
         (setv self.notice_board notice_board) ; To view commands
         (setv self.thread_dict thread_dict) ; To write output
         ; Command mappings
@@ -96,8 +97,11 @@
             ;(print f"Thread {(id self)}: Command {command}; Query {query}\n")
             (setv answer ((get self.command_mappings command) query))
             ;(print f"Thread {(id self)}: Query Answer is {answer}")
-            (setv (get self.thread_dict (id self)) answer))))
-            ;(print f"Thread {(id self)}: {self.thread_dict}")))
+            (setv (get self.thread_dict (id self)) answer)
+            (self.fl_write.set)
+            (self.fl_resume.wait)
+            (self.fl_write.clear))))
+            ;(print f"Thread {(id self)}: {self.thread_dict}\n"))))
 
 
 (defclass ActiveArray []
@@ -111,15 +115,20 @@
         ; thread_dict {obj_id relevant_data}
         (setv self.thread_dict {})
         (setv self._thread_pool [])  ; (Debug) list of threads
-        (setv self.fl_command (threading.Event))
-        (setv self.fl_shutdown (threading.Event))
+        (setv self.fl_write_pool []) ; A Pool of write event flags
+        (setv self.fl_command (threading.Event)) ; For sending commands
+        (setv self.fl_shutdown (threading.Event)) ; Makes all threads exit
+        (setv self.fl_resume_wait (threading.Event)) ; Makes threads sit but not write.
         (setv self.flags [self.fl_command self.fl_shutdown])
         (setv self._len (len data))
+        ; Initialize data members
         (for [[idx value] (enumerate data)]
+            (setv fl_write (threading.Event))
+            (self.fl_write_pool.append fl_write)
             (setv livedata (ActiveData #* [
                 idx
                 value
-                self.flags
+                [#* self.flags fl_write self.fl_resume_wait]
                 self.notice_board
                 self.thread_dict
             ]))
@@ -140,12 +149,17 @@
 
     (defn send-response [self]
         ; Wait for writes to finish
-        (while (not (= (len self.thread_dict) self._len))
+        (while (not (all (gfor flag self.fl_write_pool (flag.is_set))))
             ;(print (len self.thread_dict) self.thread_dict))
             None)
-        (self.fl_command.clear); Stop the responses
+        ; Reset flags
+        (self.fl_command.clear)
+        (self.fl_resume_wait.set) ; Trigger blocking threads
+        (self.fl_resume_wait.clear) ; Reset resume flag
+        ; Get the relevant values
         (setv response (list (filter (fn [x] (not (is x None))) (self.thread_dict.values))))
-        (self.thread_dict.clear)
+        (self.thread_dict.fromkeys self.thread_dict None) ; MUCH Faster, but that's because it's incorrect
+        ;(self.thread_dict.clear) ; Works, but is slow
         response)
     
     (defn __len__ [self]
@@ -166,13 +180,14 @@
     (defn __del__ [self]
         ;(print f"Destroying ActiveArray {(id self)}.\n")
         ;(while (any (lfor x self._thread_pool (x.is_alive)))
+        (self.fl_shutdown.set)
         (self.fl_command.set) ; release any threads currently blocking
-        (self.fl_shutdown.set)))
+        (self.fl_resume_wait.set)))
 
 (if (= __name__ "__main__")
     ; Compilation Check
 (do
-    (setv ELEMENTS 5)
+    (setv ELEMENTS 100)
     (setv TRIALS 100)
     (print "Compilation Success!\n")
     (try
