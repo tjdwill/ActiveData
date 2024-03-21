@@ -5,7 +5,7 @@
 @description:
     A data container in which the data is 'alive', meaning the contained data
     has an active role in container queries.
-@version: 0.0.3
+@version: 0.0.4
 "
 
 (import 
@@ -45,6 +45,10 @@
 
 (defclass ActiveData []
     "A dataclass that is expected to be alive"
+
+    (setv NO_MATCH False)
+    (setv SHUTDOWN_VAL None)
+
     (defn __init__ [
             self 
             #^ int idx 
@@ -58,62 +62,70 @@
             (raise (ValueError "<ActiveData>: Unacceptable index.\n"))
             (setv self.idx idx))
         (setv self.value value)
-        (setv [self.fl_command self.fl_shutdown self.fl_write self.fl_resume] event_flags) ; event flags
+        (setv [self.fl_command self.fl_resume self.fl_write] event_flags) ; event flags
         (setv self.notice_board notice_board) ; To view commands
         (setv self.thread_dict thread_dict) ; To write output
         ; Command mappings
-        (setv self.command_mappings
-            {0 self.check-idx 1 self.get-idx 2 self.check-val})
+        (setv self.command_mappings {
+            -1 self._shutdown
+            0 self.check-idx
+            1 self.get-idx
+            2 self.check-val})
         )
     
     (defn check-idx [self query]
         "Returns the value if this data has the correct index."
         (if (query self.idx)
             self.value
-            None))
+            self.NO_MATCH))
 
     (defn get-idx [self query]
         "Returns the index if the data's value fits the query.'"
         (if (query self.value)
             self.idx
-            None))
+            self.NO_MATCH))
 
     (defn check-val [self query]
         "Returns the value if this data fits the query."
         (if (query self.value)
             self.value
-            None))
-            
+            self.NO_MATCH))
+    
+    (defn _shutdown [self query]
+        self.SHUTDOWN_VAL)
+
     (defn spin [self]
-        #[TODO[
-            Tj: "Right now, the function will keep writing to the dict for as
-            long as the command flag is set. I want to find a way to change
-            this to only write once if possible."
-        ]TODO]
-        (while (not (self.fl_shutdown.is_set))
+        (while True
             (self.fl_command.wait)
-            ; A command has been issued
-            (if (self.fl_shutdown.is_set)
-                (continue)
-                None)
+            ; Command was issued
             (setv [command query] self.notice_board.content)
             ;(print f"Thread {(id self)}: Command {command}; Query {query}\n")
             (setv answer ((get self.command_mappings command) query))
             ;(print f"Thread {(id self)}: Query Answer is {answer}")
             ;(print (not (is answer None)))
-            (setv (get self.thread_dict (id self)) answer)
-                ;(print f"Thread {(id self)} Curr Dict\n{self.thread_dict} with ID {( id self.thread_dict)}\n"))
 
+            ; Use `is` comparisons to guard against valid False values (ex. 0, [], etc.)
+            (if (is answer self.SHUTDOWN_VAL)
+                (break)
+                (if (is answer self.NO_MATCH)
+                    None
+                    (setv (get self.thread_dict (id self)) answer)))
+            ;(print f"Thread {(id self)} Curr Dict\n{self.thread_dict} with ID {( id self.thread_dict)}\n"))
             (self.fl_write.set)
             (self.fl_resume.wait)
             (self.fl_write.clear))))
+            
             ;(print f"Thread {(id self)}: {self.thread_dict}\n"))))
 
 
 (defclass ActiveArray []
     "A container class to coordinate ActiveData instances."
 
-    (setv command_mappings {"val_from_idx" 0 "idx_from_val" 1 "vals_from_bool" 2})
+    (setv command_mappings {
+        "shutdown" -1
+        "val_from_idx" 0 
+        "idx_from_val" 1 
+        "vals_from_bool" 2})
     (defn __init__ [self #^ [list tuple] data]
         (setv self.canvas_type (namedtuple "CommandBoard" ["command" "query"] :defaults [None None]))
         (setv self.notice_board (NoticeBoard (id self) self.canvas_type))
@@ -123,9 +135,8 @@
         (setv self._key_pool [])  ; (Debug) list of threads
         (setv self.fl_write_pool []) ; A Pool of write event flags
         (setv self.fl_command (threading.Event)) ; For sending commands
-        (setv self.fl_shutdown (threading.Event)) ; Makes all threads exit
-        (setv self.fl_thread_resume (threading.Event)) ; Makes threads sit but not write.
-        (setv self.flags [self.fl_command self.fl_shutdown])
+        (setv self.fl_resume (threading.Event)) ; Makes threads sit but not write.
+        (setv self.flags [self.fl_command self.fl_resume])
         (setv self._len (len data))
         ; Initialize data members
         (for [[idx value] (enumerate data)]
@@ -134,7 +145,7 @@
             (setv livedata (ActiveData #* [
                 idx
                 value
-                [#* self.flags fl_write self.fl_thread_resume]
+                [#* self.flags fl_write]
                 self.notice_board
                 self.thread_dict
             ]))
@@ -148,6 +159,7 @@
         "
         Publish command and query to the notice board.
         Command Mapping:
+            -1: Shutdown
             0: Get value from index
             1: Get idx from value
             2: Get values from boolean
@@ -160,12 +172,16 @@
         (while (not (all (gfor flag self.fl_write_pool (flag.is_set))))
             None)
         (self.fl_command.clear)
-        (self.fl_thread_resume.set)
+        (self.fl_resume.set)
         (setv response (list (filter (fn [x] (not (is x None))) (self.thread_dict.values))))
         (self.thread_dict.update (self.thread_dict.fromkeys self.thread_dict None))
-        (self.fl_thread_resume.clear)
+        (self.fl_resume.clear)
         response)
     
+    (defn shutdown-data [self]
+        (self.fl_resume.set)  ; wake any blocking threads
+        (self.send_command (get self.command_mappings "shutdown") (fn [x] None)))
+
     (defn __len__ [self]
         (return self._len))
 
@@ -184,15 +200,13 @@
     (defn __del__ [self]
         ;(print f"Destroying ActiveArray {(id self)}.\n")
         ;(while (any (lfor x self._key_pool (x.is_alive)))
-        (self.fl_shutdown.set)
-        (self.fl_command.set) ; release any threads currently blocking
-        (self.fl_thread_resume.set)))
+        (self.shutdown-data)))
 
 
 (if (= __name__ "__main__")
     ; Compilation Check
 (do
-    (setv ELEMENTS 10)
+    (setv ELEMENTS 100)
     (setv TRIALS 100)
     (print "Compilation Success!\n")
     (try
@@ -205,22 +219,32 @@
     ;#[CHECK[
 
     (try
-        (setv [counter correct totaltime] [0 0 0])
+        (setv [counter correct totaltime max_time min_time] [0 0 0 0 Inf])
         (for [i (range TRIALS)]
             (setv idx (random.randint 0 (- (len arr) 1)))
-            (setv starttime (time.time))
+            (setv starttime (time.perf_counter))
             (setv answer (. arr [idx]))
             (print f"Index Query Response {counter}\nTarget: {idx}, Answer: {answer}")
-            (setv new_time (- (time.time) starttime))
+            (setv new_time (- (time.perf_counter) starttime))
             (print "Elapsed Time: " new_time)
             (setv counter (+ counter 1))
+            ; Time Data
+            (if (< new_time min_time)
+                (setv min_time new_time)
+                None)
+            (if (> new_time max_time)
+                (setv max_time new_time)
+                None)            
             (setv totaltime (+ totaltime new_time))
+            ; Accuracy
             (if (and answer (= (. answer [0])  idx))
                 (setv correct (+ correct 1))
                 None))
         (print f"\nNumber of Elements in Array: {(len arr)}")
         (print f"Retrieval Accuracy: {(* (/ correct counter) 100) :.02f}%")
-        (print f"Average Access Time (s): {(/ totaltime TRIALS)}")
+        (print f"Average Access Time (s): {(/ totaltime TRIALS) :.04f}")
+        (print f"Min Access Time (s): {min_time :.04f}")
+        (print f"Max Access Time (s): {max_time :.04f}")
     (except [e[BaseException]]
         (print "Something happened.\n" e)
         (arr.__del__))
