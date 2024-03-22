@@ -1,18 +1,16 @@
 "
 @author: tjdwill
 @date: 18 March 2022
-@title: Live Data
+@title: Active Data
 @description:
     A data container in which the data is 'alive', meaning the contained data
     has an active role in container queries.
-@version: 0.0.4
+@version: 0.0.5
 "
 
 (import 
     collections [namedtuple]
-    threading
-    time
-    random)
+    threading)
 
 #[TODO[
     - Investigate Race condition: Why do I get the incorrect answer at times?
@@ -40,7 +38,10 @@
             (raise (TypeError "Incorrect canvas type.\n"))
             (if (not (= key self.author_key))
                 (raise (PermissionError "Authentication Error: No write access.\n"))
-                (setv self._board new_data)))))
+                (setv self._board new_data))))
+                
+    (defn __str__ [self]
+        (str (self.content))))
     
 
 (defclass ActiveData []
@@ -68,24 +69,26 @@
         ; Command mappings
         (setv self.command_mappings {
             -1 self._shutdown
-            0 self.check-idx
-            1 self.get-idx
-            2 self.check-val})
+            0 self.val-from-idx
+            1 self.idx-from-bool
+            2 self.val-from-bool})
         )
     
-    (defn check-idx [self query]
+    (defn val-from-idx [self query]
         "Returns the value if this data has the correct index."
         (if (query self.idx)
             self.value
             self.NO_MATCH))
 
-    (defn get-idx [self query]
+    (defn idx-from-bool [self query]
         "Returns the index if the data's value fits the query.'"
         (if (query self.value)
-            self.idx
+            (do 
+            ;(print f"Thread {(id self)}: Index Found {self.idx}.\n")
+            self.idx)
             self.NO_MATCH))
 
-    (defn check-val [self query]
+    (defn val-from-bool [self query]
         "Returns the value if this data fits the query."
         (if (query self.value)
             self.value
@@ -121,11 +124,13 @@
 (defclass ActiveArray []
     "A container class to coordinate ActiveData instances."
 
+    ; Define mappings from desired command to ActiveData command-map key.
     (setv command_mappings {
         "shutdown" -1
         "val_from_idx" 0 
-        "idx_from_val" 1 
-        "vals_from_bool" 2})
+        "idx_from_bool" 1 
+        "val_from_bool" 2})
+
     (defn __init__ [self #^ [list tuple] data]
         (setv self.canvas_type (namedtuple "CommandBoard" ["command" "query"] :defaults [None None]))
         (setv self.notice_board (NoticeBoard (id self) self.canvas_type))
@@ -182,73 +187,38 @@
         (self.fl_resume.set)  ; wake any blocking threads
         (self.send_command (get self.command_mappings "shutdown") (fn [x] None)))
 
-    (defn __len__ [self]
-        (return self._len))
-
-    (defn __getitem__ [self index]
+    (defn #^ type _val-from-idx [self #^ int index]
         (cond
             (< index 0) (do
-                (if (<= 1 (abs index) (self._len))
+                (if (<= 1 (abs index) self._len)
                 (setv index (+ self._len index))
                 (raise (IndexError "Index out of range.\n"))))
             
             (>= index self._len) (raise (IndexError "Index out of range.\n")))
         ; Send requisite signal
-        (self.send_command (get self.command_mappings "val_from_idx") (fn [x] (= x index)))
+        (self.send_command (get self.command_mappings "val_from_idx") (fn [x] (= x index))))
+
+    (defn #^ type _val-from-bool [self query]
+        ; query: an anonymous boolean predicate
+        (self.send_command (get self.command_mappings "val_from_bool") query))
+
+    (defn #^ int where [self query]
+        ; Returns the indices where the condition is satisfied
+        (self.send_command (get self.command_mappings "idx_from_bool") query)
+        (self.send-response))
+
+    (defn __len__ [self]
+        (return self._len))
+
+    (defn __getitem__ [self query]
+        (if (= (type query) int)
+            (self._val-from-idx query)
+            (self._val-from-bool query))
         (self.send-response))
         
+    (defn __str__ [self]
+        ; Return all data elements
+        (str (. self [(fn [x] True)])))
+
     (defn __del__ [self]
-        ;(print f"Destroying ActiveArray {(id self)}.\n")
-        ;(while (any (lfor x self._key_pool (x.is_alive)))
         (self.shutdown-data)))
-
-
-(if (= __name__ "__main__")
-    ; Compilation Check
-(do
-    (setv ELEMENTS 100)
-    (setv TRIALS 100)
-    (print "Compilation Success!\n")
-    (try
-        (setv lst (lfor x (range ELEMENTS) x))
-        (setv arr (ActiveArray lst))
-        (print "Live Data created.\n")
-    (except [e[]]
-        (print e))
-    )
-    ;#[CHECK[
-
-    (try
-        (setv [counter correct totaltime max_time min_time] [0 0 0 0 Inf])
-        (for [i (range TRIALS)]
-            (setv idx (random.randint 0 (- (len arr) 1)))
-            (setv starttime (time.perf_counter))
-            (setv answer (. arr [idx]))
-            (print f"Index Query Response {counter}\nTarget: {idx}, Answer: {answer}")
-            (setv new_time (- (time.perf_counter) starttime))
-            (print "Elapsed Time: " new_time)
-            (setv counter (+ counter 1))
-            ; Time Data
-            (if (< new_time min_time)
-                (setv min_time new_time)
-                None)
-            (if (> new_time max_time)
-                (setv max_time new_time)
-                None)            
-            (setv totaltime (+ totaltime new_time))
-            ; Accuracy
-            (if (and answer (= (. answer [0])  idx))
-                (setv correct (+ correct 1))
-                None))
-        (print f"\nNumber of Elements in Array: {(len arr)}")
-        (print f"Retrieval Accuracy: {(* (/ correct counter) 100) :.02f}%")
-        (print f"Average Access Time (s): {(/ totaltime TRIALS) :.04f}")
-        (print f"Min Access Time (s): {min_time :.04f}")
-        (print f"Max Access Time (s): {max_time :.04f}")
-    (except [e[BaseException]]
-        (print "Something happened.\n" e)
-        (arr.__del__))
-    (else
-        (del arr))))
-    ;]CHECK])
-(exit))
