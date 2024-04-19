@@ -1,12 +1,13 @@
 "
 @author: tjdwill
-@date: 21 March 2022
+@date: 21 March 2024
 @title: Active Data Testing
 @description:
     Tests data access in the new container type.
 
 Run from top-level directory as a module 
-    >> hy -m active_data.tests.access
+    >>> cd active_data
+    >>> hy -m tests.access
 "
 (import
     os
