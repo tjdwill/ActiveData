@@ -1,6 +1,6 @@
 "
 @author: tjdwill
-@date: 18 March 2022
+@date: 18 March 2024
 @title: Active Data
 @description:
     A data container in which the data is 'alive', meaning the contained data
@@ -19,7 +19,7 @@
     - Why does a larger number of threads result in super slow performance?
         * Answer: GIL + Context Switching
     - How can I make it faster than the current list implementation? (It's currently over 10x slower.)
-        * It's going to be because the list operations are implemented in C. You won't outspeed it by nature of 
+        * It's going to be slower because the list operations are implemented in C. You won't outspeed it by nature of 
         the Active data structures being implemented in Python (CPython).
 ]TODO]
 
