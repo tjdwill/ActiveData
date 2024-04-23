@@ -1,0 +1,68 @@
+\documentclass[10pt]{article}
+
+% PACKAGES
+\usepackage[T1]{fontenc}
+\usepackage{graphicx}
+	\graphicspath{{./figures}}
+\usepackage{listings}
+\usepackage[a4paper]{geometry}
+\usepackage{xurl}
+\usepackage{xcolor}
+
+% lIstings config
+\lstset{
+	language=Python,
+	basicstyle=\ttfamily,
+}
+
+
+\author{tjdwill}
+\date{\today}
+\title{Responsive Data: Initial Design}
+\begin{document}
+\maketitle
+
+%% URLs
+\urldef{\Hy}\url{https://github.com/hylang/hy}
+
+
+\begin{abstract}
+	This document details the initial design of what I call \textit{responsive} or \textit{active} data. The idea is to have self-aware data than can respond to inquiries in pursuit of an idealized data container with $\mathbf{O}(1)$ access and sort time.
+\end{abstract}
+
+\section{Introduction}
+	Current data containers in programming contexts are passive, meaning in order to access specific data, one (traditionally) iterates through the container. However, as the container scales in size, the access time may take longer depending on the location of the data element within the container. 
+	
+	An alternate container type would be active. Imagine a conference room filled with thousands of audience members, each with a unique card. If I wanted to retrieve a specific pattern, looking through each audience member's card would be incredibly inefficient. Instead, the natural course of action is to call out the desired pattern and have the specific audience member bring the card forward. So it is with the proposed data container herein. In this document, I propose a (very \textit{very}) early) design for an active data container and associated structures. The current name for this data structure is \lstinline|ActiveArray|, though it may change in the future.
+	
+\section{Infrastructure}
+
+	In order to represent this concept programmatically, three classes were created:  \lstinline|ActiveData|, \lstinline|ActiveArray|, and \lstinline|NoticeBoard|. The first represents responsive, self-aware data elements. The second is a container that holds the active data elements and serve as an interface to access the data. Finally, the third class provides a method to pass queries along to the data elements for evaluation. The three structures were programmed using the \texttt{Hy} programming language, a Lisp implementation in Python that allows for Lisp-style programming with Python modules and packages\footnote{\Hy}. As shown in Figure \ref{fig:relationships}, the developed structures interact as follows. First, a user inputs a query to the \lstinline|ActiveArray| object that is linked to many \lstinline|ActiveData| objects. Next, the array object determines the command to send and writes the command to the \lstinline|NoticeBoard| object. The data objects each read and execute the command, writing their responses to the response mechanism. The array then takes the response mechanism, filters for relevant answers, and outputs the answer to the user.
+	
+	\begin{figure}[htbp]
+		\centering
+		\includegraphics[width=\textwidth]{ActiveDataFlow.png}
+		\caption{Structure Relationships}
+		\label{fig:relationships}
+	\end{figure}
+
+\subsection{NoticeBoard}
+	The first structure described is the \lstinline|NoticeBoard|. This structure is used to pass the input commands to each data object at once. Rather, it serves as a board the array object writes to and which data objects "read" from. 
+	The (abstract) constructor is as follows:
+	
+\begin{lstlisting}
+NoticeBoard(author_key, canvas)
+\end{lstlisting}
+	
+	The \lstinline|canvas| is the actual board. Currently, I use a \lstinline|namedtuple| as the canvas which has fields \lstinline|command| which holds the command key and \lstinline|query| which is the actual Boolean function the data uses to determine if it satisfies the user inquiry. the \lstinline|author_key| is a form of authentication used to ensure that the only object that can write to the \lstinline|NoticeBoard| is the object that has the key used during instantiation. Specifically, in this design, the \lstinline|ActiveArray| object instantiates the board by using its own memory address as the \lstinline|author_key|. None of the data objects hold a reference to the array and Python promises unique object IDs while the objects persist, effectively ensuring that only the array object can update the board.
+	
+	\noindent\textbf{Attribute(s)}
+	\begin{itemize}
+		\item \lstinline|content|: Returns command and query
+	\end{itemize}
+	
+	
+\subsection{ActiveData}
+\subsection{ActiveArray}
+	
+\end{document}
