@@ -13,7 +13,7 @@
     threading
     typing [Any]
     activedata.noticeboard [NoticeBoard]
-    activedata.activedata [ActiveData])
+    activedata.data [ActiveData])
 
 
 #[TODO[
