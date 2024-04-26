@@ -1,11 +1,12 @@
 "
 @author: tjdwill
 @date: 18 March 2024
+@last_modified: 25 April 2024
 @title: Active Data
 @description:
     A data container in which the data is 'alive', meaning the contained data
     has an active role in container queries.
-@version: 0.0.5
+@version: 0.0.6
 "
 (import 
     collections [namedtuple]
@@ -74,12 +75,12 @@
         ; Initialize writeable dict.
         (self.response_board.update (dfor key self._key_pool key None)))
     
-    (defn send-command [self command query]
+    (defn _send-command [self command query]
         "Publish command and data query to the notice board."
         (setv self.notice_board.content [(id self) (self.canvas_type :command command :query query)])
         (self.fl_command.set))
 
-    (defn send-response [self]
+    (defn _send-response [self]
         "Output the coalesced responses from the data objects"
         ; Wait for writes to finish
         (while (not (all (gfor flag self.fl_write_pool (flag.is_set))))
@@ -91,9 +92,9 @@
         (self.fl_resume.clear)
         response)
     
-    (defn shutdown-data [self]
+    (defn _shutdown-data [self]
         (self.fl_resume.set)  ; wake any blocking threads
-        (self.send_command (get self.command_mappings "shutdown") (fn [x] None)))
+        (self._send-command (get self.command_mappings "shutdown") (fn [x] None)))
 
     (defn #^ type _val-from-idx [self #^ int index]
         (cond
@@ -104,16 +105,16 @@
             
             (>= index self._len) (raise (IndexError "Index out of range.\n")))
         ; Send requisite signal
-        (self.send_command (get self.command_mappings "val_from_idx") (fn [x] (= x index))))
+        (self._send-command (get self.command_mappings "val_from_idx") (fn [x] (= x index))))
 
     (defn #^ type _val-from-bool [self query]
         ; query: an anonymous boolean predicate
-        (self.send_command (get self.command_mappings "val_from_bool") query))
+        (self._send-command (get self.command_mappings "val_from_bool") query))
 
     (defn #^ int where [self query]
         ; Returns the indices where the condition is satisfied
-        (self.send_command (get self.command_mappings "idx_from_bool") query)
-        (self.send-response))
+        (self._send-command (get self.command_mappings "idx_from_bool") query)
+        (self._send-response))
 
     (defn __len__ [self]
         (return self._len))
@@ -122,7 +123,7 @@
         (if (= (type query) int)
             (self._val-from-idx query)
             (self._val-from-bool query))
-        (self.send-response))
+        (self._send-response))
 
     (defn __repr__ [self]
         (cat [f"ActiveArray:\n\tInner datatype: {self._dtype}\n\t"
@@ -132,5 +133,11 @@
         ; Return all data elements
         (str (. self [(fn [x] True)])))
 
+    (defn __enter__ [self]
+        self)
+
+    (defn __exit__ [self #* args #** kwargs]
+        (self._shutdown-data))
+
     (defn __del__ [self]
-        (self.shutdown-data)))
+        (self._shutdown-data)))
