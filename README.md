@@ -2,6 +2,7 @@
 A very impractical container for live data. The stored data can respond to queries, potentially speeding up access time (that's the goal, anyway).
 
 ## To-Do
+- [ ] Investigate potential data race due to rapidly successive accesses.
 - [x] Add Exception handling for ActiveData objects.
 - [x] Experiment with container instantiation and access
   - [x] Querying numeric data
