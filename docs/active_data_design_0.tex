@@ -19,6 +19,7 @@
 \author{tjdwill}
 \date{\today}
 \title{Responsive Data: Initial Design}
+
 \begin{document}
 \maketitle
 
@@ -46,23 +47,148 @@
 		\label{fig:relationships}
 	\end{figure}
 
-\subsection{NoticeBoard}
+\subsection{\lstinline|NoticeBoard|}
 	The first structure described is the \lstinline|NoticeBoard|. This structure is used to pass the input commands to each data object at once. Rather, it serves as a board the array object writes to and which data objects "read" from. 
 	The (abstract) constructor is as follows:
 	
-\begin{lstlisting}
-NoticeBoard(author_key, canvas)
-\end{lstlisting}
+	\begin{lstlisting}
+	NoticeBoard(author_key, canvas)
+	\end{lstlisting}
 	
 	The \lstinline|canvas| is the actual board. Currently, I use a \lstinline|namedtuple| as the canvas which has fields \lstinline|command| which holds the command key and \lstinline|query| which is the actual Boolean function the data uses to determine if it satisfies the user inquiry. the \lstinline|author_key| is a form of authentication used to ensure that the only object that can write to the \lstinline|NoticeBoard| is the object that has the key used during instantiation. Specifically, in this design, the \lstinline|ActiveArray| object instantiates the board by using its own memory address as the \lstinline|author_key|. None of the data objects hold a reference to the array and Python promises unique object IDs while the objects persist, effectively ensuring that only the array object can update the board.
 	
 	\noindent\textbf{Attribute(s)}
+	
 	\begin{itemize}
 		\item \lstinline|content|: Returns command and query
 	\end{itemize}
 	
+\subsection{\lstinline|ActiveData|}
+	The next structure is \lstinline|ActiveData|. This basically "gives life" to a data element. The main idea of this is that structure is that each object lives in its own execution thread. The object keeps track of its value and its assigned index to respond to queries it receives through the \lstinline|NoticeBoard|. Unfortunately, due to each element having its own thread, having a lot of data elements results in poor performance due to context switching overhead. The Python Global Interpreter Lock doesn't help either. It is unclear to the author what programming concept/primitive can be used to provide a way for an arbitrary number of objects to remain dormant and respond to some event. 
+	\subsubsection{Constructor}
+	In any case, let's describe the object. \lstinline|ActiveData| objects are constructed with the following parameters:
 	
-\subsection{ActiveData}
-\subsection{ActiveArray}
+	\begin{lstlisting}
+	ActiveData(
+		index,
+		value,
+		event_flags,
+		notice_board,
+		response_board
+	)
+	\end{lstlisting}
+	\begin{itemize}
+		\item index (int): the object's position in the container.
+		\item value (Any): the object's value
+		\item event\_flags (list): A list of threading event flags for synchronization
+		\item notice\_board (NoticeBoard): the means of getting commands
+		\item response\_board (dict): the method of responding to queries.
+	\end{itemize}
 	
+	An \lstinline|ActiveData| object's index is provided on construction during the initialization of the container object. It maintains the original order of the input container. Sorting and other index-modifying objects are not currently implemented at this time.
+	The event flags are needed for synchronization and to prevent data races. There are currently three such flags. The first is a flag called \lstinline|fl_command| used to force the object to block until a new command is available on the notice board. Second is the \lstinline|fl_write| flag used to inform the container object that the individual data object has responded to the command. Finally, \lstinline|fl_resume| is used to force the data object to block until the container object has received all responses.
+	
+	The response board is a way of preventing data races without needing to pass around a lock. The board is a dictionary where each key is an \lstinline|ActiveData| object's memory address. Initially, all values are set to \lstinline|None|. Because an object has a reference to itself \lstinline|self|, it is able to use its object ID to write to the dictionary, effectively giving each data object its own slot. This allows all of the objects to write to the dictionary without fear of overwriting another object's entry.
+	
+	\subsubsection{Methods}
+		At the time of writing, there are five methods for this class, four of which are used to handle commands.
+		\begin{itemize}
+			\definecolor{Red}{HTML}{EF596F}
+			\lstset{basicstyle=\ttfamily\color{Red}}
+			\item \lstinline|ActiveData.val-from-bool(query: Callable)|: Retrieves value if data satisfies the provided query.
+			
+			\item \lstinline|ActiveData.val-from-idx(query: Callable)|: Special case of\\ \lstinline|ActiveData.val-from-bool|. Retrieves value if index matches. 
+			
+			\item \lstinline|ActiveData.idx-from-bool(query: Callable)|: Retrieves index if data satisfies provided query.
+			
+			\item \lstinline|ActiveData.spin()|: Repeatedly waits for next command and executes it.
+			
+			\item \lstinline|ActiveData._shutdown(query: Callable)|: Breaks the \lstinline|ActiveData.spin| loop, allowing the object to be garbage collected.
+		\end{itemize}
+\subsection{\lstinline|ActiveArray|}
+	The final structure defined in this first iteration is \lstinline|ActiveArray|. This class defines a container\textemdash or rather, a manager\textemdash for the \lstinline|ActiveData| objects. It is through this object that a user interfaces with the contained data. It's also responsible for instantiating the \lstinline|NoticeBoard| and the collection of \lstinline|ActiveData|.
+	
+	\subsubsection{Constructor}
+	\begin{lstlisting}
+	ActiveArray(data)
+	\end{lstlisting}
+	\lstinline|data| in this case is a list or tuple of data elements (preferably homogeneously typed, but this is not enforced). On initialization, each data element is converted into an \lstinline|ActiveData| object whose \lstinline|spin| method is called in a new thread. The new active objects' ids are then used to instantiate the response board (the dictionary). 
+	
+	\subsubsection{General Methods}
+		\begin{itemize}
+			\definecolor{Red}{HTML}{EF596F}
+			\lstset{basicstyle=\ttfamily\color{Red}}
+			\item \lstinline|ActiveArray._send-command(command: int, query: Callable)|:\\ Publishes command to the \lstinline|NoticeBoard|.
+			
+			\item \lstinline|ActiveArray._send-response()|: Output the coalesced responses from the data objects
+			
+			\item \lstinline|ActiveArray._shutdown-data()|: send the shutdown signal to all \lstinline|ActiveData| objects managed by this container.
+			
+			\item \lstinline|ActiveArray._val-from-bool(query: Callable)|: \lstinline|_send-command| alias\\to call \lstinline|ActiveData.val-from-bool|.
+			
+			\item \lstinline|ActiveArray._val-from-idx(index: int)|: \lstinline|_send-command| alias\\to call \lstinline|ActiveData.val-from-idx|.
+			
+			\item \lstinline|ActiveArray.where(query: Callable)|: Public \lstinline|_send-command| alias\\to call \lstinline|ActiveData.idx-from-bool|.
+		\end{itemize}
+	\subsubsection{Special Methods}
+		Besides the expected \lstinline|__repr__| and \lstinline|__str__| implementations, \lstinline|ActiveArray| implements\\
+		\lstinline|__len__|, \lstinline|__getitem__|, \lstinline|__enter__|, \lstinline|__exit__|, and \lstinline|__del__| for ease of use. The \lstinline|__del__| method calls the shutdown method to exit all of the data threads before the array is garbage collected, thereby preventing hanging threads. However, it's better to use the object within a context manager to ensure this happens even in case of error.
+		\lstinline|__getitem__| is implemented such that user can provide either an integer (negative index values are supported) or a lambda function that returns a boolean value.
+		
+\newpage
+\section{Example(s)}
+	Here, a few examples are provided to show how to use the developed work. They are written in the \lstinline|Hy| language. I deliberately forgo a context manager for the command-line examples to get the output piece-by-piece, but it is better to use one.
+	
+\begin{lstlisting}
+>>> (import
+	threading
+	activedata [ActiveArray]
+	numpy :as np)
+>>> (setv data (
+	lfor _ (range 3) 
+		(np.random.randint 0 50 :size #(2 2))))
+>>> (print #* data :sep "\n\n")
+[[39 33]
+[25 24]]
+
+[[32 30]
+[42 22]]
+
+[[25  7]
+[29 19]]
+>>> (threading.active_count)
+1
+>>> (setv actv_arr (ActiveArray data))
+>>> (threading.active_count)
+4
+
+>>> ; Get all arrays whose entries are all even.
+
+>>> (get actv_arr (fn [x]
+	(. (np.equal (% x 2) 0) (all))))
+[array([[32, 30],
+[42, 22]])]
+
+>>> ; Get all arrays that have at least one even entry
+
+>>> (get actv_arr (fn [x]
+	(. (np.equal (% x 2) 0) (any))))
+[array([[39, 33],
+[25, 24]]) array([[32, 30],
+[42, 22]])]	
+>>> (setv a (get actv_arr 1))
+>>> (setv b (get actv_arr (fn [x]
+	(. (np.equal (% x 2) 0) (all)))))
+>>> (= a b)
+True
+
+>>> ; Get all arrays that sum to less than 100.
+
+>>> (get actv_arr (fn [x] (< (x.sum) 100)))
+[array([[25,  7],
+[29, 19]])]
+>>> (del actv_arr)
+>>> (threading.active_count)
+1
+\end{lstlisting}
 \end{document}
