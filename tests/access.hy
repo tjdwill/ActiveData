@@ -1,6 +1,6 @@
 "
 @author: tjdwill
-@date: 21 March 2024
+@date: 21 March 2022
 @title: Active Data Testing
 @description:
     Tests data access in the new container type.
@@ -13,17 +13,18 @@ Run from top-level directory as a module
     os
     random
     time
-    active_data.activedata [ActiveArray])
+    activedata [ActiveArray])
 
 
 (if (= __name__ "__main__")
 (do
     ;(random.seed 42)
-    (setv ELEMENTS 500)
-    (setv TRIALS 1)
+    (setv ELEMENTS 100)
+    (setv TRIALS 100)
     (print "Compilation Success!\n")
     (try
-        (setv lst (lfor x (range ELEMENTS) (random.randint 0 1000)))
+        ; (setv lst (lfor x (range ELEMENTS) (random.randint 0 1000)))
+        (setv lst (lfor x (range ELEMENTS) x))
         (setv arr (ActiveArray lst))
         (print "Live Data created.\n")
     (except [e[]]
@@ -32,7 +33,7 @@ Run from top-level directory as a module
     
 
     (try
-#[CHECK[
+
         (setv [counter correct totaltime max_time min_time] [0 0 0 0 Inf])
         (for [i (range TRIALS)]
             (setv idx (random.randint 0 (- (len arr) 1)))
@@ -59,11 +60,11 @@ Run from top-level directory as a module
         (print f"Average Access Time (s): {(/ totaltime TRIALS) :.04f}")
         (print f"Min Access Time (s): {min_time :.04f}")
         (print f"Max Access Time (s): {max_time :.04f}")
-]CHECK]
+#[CHECK[]CHECK]
         ; Try new form of selection
         (setv func '(fn [x] (and (< x (/ ELEMENTS 4)) (= (% x 2) 0))))
         (setv starttime (time.perf_counter))
-        (print f"\nValues in which\n{func}:\n{(. arr [(hy.eval func)])}")
+        (print f"\nValues in which\n{func}:\n{(get arr (hy.eval func))}")
         (setv new_time (- (time.perf_counter) starttime))
         (print "Elapsed Time (s): " new_time)
 
