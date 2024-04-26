@@ -1,5 +1,6 @@
 # ActiveData
 A very impractical container for live data. The stored data can respond to queries, potentially speeding up access time (that's the goal, anyway).
+For a thorough explanation, please read [the write-up](https://github.com/tjdwill/ActiveData/blob/main/docs/active_data_design_0.pdf).
 
 ## To-Do
 - [ ] Investigate potential data race due to rapidly successive accesses.
