@@ -2,6 +2,9 @@
 A very impractical container for live data. The stored data can respond to queries, potentially speeding up access time (that's the goal, anyway).
 For a thorough explanation, please read [the write-up](https://github.com/tjdwill/ActiveData/blob/main/docs/active_data_design_0.pdf).
 
+(22 May 2024) - Naturally, the access time would have to scale with the number of elements given limited computational resources, so the idealized O(1) access/sorting time is just that: ideal. 
+Still, I do like this idea.
+
 ## To-Do
 - [ ] Investigate potential data race due to rapidly successive accesses.
 - [x] Add Exception handling for ActiveData objects.
