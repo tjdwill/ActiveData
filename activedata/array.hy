@@ -1,8 +1,8 @@
 "
 @author: tjdwill
 @date: 18 March 2024
-@last_modified: 25 April 2024
-@title: Active Data
+@last_modified: 22 May 2024
+@title: ActiveArray
 @description:
     A data container in which the data is 'alive', meaning the contained data
     has an active role in container queries.
