@@ -1,3 +1,12 @@
+"
+@author: tjdwill
+@date: 18 March 2024
+@last_modified: 22 May 2024
+@title: ActiveData
+@description:
+    The responsive data objects. Each object lives in its own thread and is able to respond to queries as a result.
+"
+
 (import 
     threading
     typing [Any]
