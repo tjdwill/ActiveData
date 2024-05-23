@@ -1,3 +1,16 @@
+"
+@author: tjdwill
+@date: 18 March 2024
+@last_modified: 22 May 2024
+@title: ActiveData
+@description:
+    A one-way communication channel that, in the context of this project, allows the ActiveArray to issue commands to the ActiveData.
+"
+
+#[PROPOSALS[
+    1. Should I move the response board to be an element of this structure?
+]PROPOSALS]
+
 (import collections [namedtuple])
 
 
