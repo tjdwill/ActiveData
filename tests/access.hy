@@ -1,4 +1,4 @@
-#[COPYRIGHT[
+#[LICENSE[
     This file is part of ActiveData. ActiveData is free software: you can
     redistribute it and/or modify it under the terms of the GNU General Public
     License v2.0 as published by the Free Software Foundation.
@@ -9,7 +9,7 @@
 
     You should have received a copy of the GNU General Public License along with
     ActiveData. If not, see <https://www.gnu.org/licenses/>. 
-]COPYRIGHT]
+]LICENSE]
 "
 @author: tjdwill
 @date: 21 March 2022
